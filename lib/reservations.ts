@@ -1,47 +1,26 @@
-import fs from "fs";
-import path from "path";
+import { db } from "./db";
 
 export interface Reservation {
   id: string;
   date: string;
   timeSlot: string;
-  name: string;
+  userId: string;
+  userColor?: string;
   createdAt: string;
 }
 
-const DATA_FILE = path.join(process.cwd(), "data", "reservations.json");
-
-// Ensure data directory exists
-function ensureDataDir() {
-  const dir = path.dirname(DATA_FILE);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, "[]", "utf-8");
-  }
-}
-
 export function getReservations(): Reservation[] {
-  ensureDataDir();
-  try {
-    const data = fs.readFileSync(DATA_FILE, "utf-8");
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
+  return db.query("SELECT * FROM reservations").all() as Reservation[];
 }
 
 export function addReservation(
   reservation: Omit<Reservation, "id" | "createdAt">
 ): Reservation {
-  ensureDataDir();
-  const reservations = getReservations();
-
   // Check for duplicates
-  const existing = reservations.find(
-    (r) => r.date === reservation.date && r.timeSlot === reservation.timeSlot
-  );
+  const existing = db
+    .query("SELECT * FROM reservations WHERE date = ? AND timeSlot = ?")
+    .get(reservation.date, reservation.timeSlot);
+
   if (existing) {
     throw new Error("Slot already reserved");
   }
@@ -52,8 +31,18 @@ export function addReservation(
     createdAt: new Date().toISOString(),
   };
 
-  reservations.push(newReservation);
-  fs.writeFileSync(DATA_FILE, JSON.stringify(reservations, null, 2), "utf-8");
+  db.run(
+    `INSERT INTO reservations (id, date, timeSlot, userId, userColor, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      newReservation.id,
+      newReservation.date,
+      newReservation.timeSlot,
+      newReservation.userId,
+      newReservation.userColor || null,
+      newReservation.createdAt,
+    ]
+  );
 
   // Notify SSE clients
   notifyClients({ type: "add", reservation: newReservation });
@@ -62,21 +51,21 @@ export function addReservation(
 }
 
 export function deleteReservation(date: string, timeSlot: string): boolean {
-  ensureDataDir();
-  const reservations = getReservations();
-  const index = reservations.findIndex(
-    (r) => r.date === date && r.timeSlot === timeSlot
-  );
+  const existing = db
+    .query("SELECT * FROM reservations WHERE date = ? AND timeSlot = ?")
+    .get(date, timeSlot) as Reservation | null;
 
-  if (index === -1) {
+  if (!existing) {
     return false;
   }
 
-  const deleted = reservations.splice(index, 1)[0];
-  fs.writeFileSync(DATA_FILE, JSON.stringify(reservations, null, 2), "utf-8");
+  db.run("DELETE FROM reservations WHERE date = ? AND timeSlot = ?", [
+    date,
+    timeSlot,
+  ]);
 
   // Notify SSE clients
-  notifyClients({ type: "delete", reservation: deleted });
+  notifyClients({ type: "delete", reservation: existing });
 
   return true;
 }

@@ -21,16 +21,16 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { date, timeSlot, name } = body;
+    const { date, timeSlot, userColor, userId } = body;
 
-    if (!date || !timeSlot || !name) {
+    if (!date || !timeSlot || !userId) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Missing required fields (date, timeSlot, userId)" },
         { status: 400 }
       );
     }
 
-    const reservation = addReservation({ date, timeSlot, name });
+    const reservation = addReservation({ date, timeSlot, userColor, userId });
     return NextResponse.json(reservation, { status: 201 });
   } catch (error) {
     console.error("Failed to add reservation:", error);
