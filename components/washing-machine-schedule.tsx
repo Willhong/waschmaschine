@@ -19,7 +19,114 @@ import {
   CalendarIcon,
   ClockIcon,
   SparklesIcon,
+  TrashIcon,
+  XIcon,
 } from "lucide-react";
+
+// Mobile action sheet component
+function MobileActionSheet({
+  open,
+  onClose,
+  reservation,
+  onCancel,
+}: {
+  open: boolean;
+  onClose: () => void;
+  reservation: Reservation | null;
+  onCancel: () => void;
+}) {
+  // Prevent body scroll when sheet is open
+  React.useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
+
+  if (!reservation) return null;
+
+  const date = new Date(reservation.date + "T00:00:00");
+  const formattedDate = date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={cn(
+          "fixed inset-0 z-50 bg-black/40 backdrop-blur-sm transition-opacity duration-300",
+          open ? "opacity-100" : "opacity-0 pointer-events-none"
+        )}
+        onClick={onClose}
+      />
+
+      {/* Sheet */}
+      <div
+        className={cn(
+          "fixed inset-x-0 bottom-0 z-50 transition-transform duration-300 ease-out",
+          open ? "translate-y-0" : "translate-y-full"
+        )}
+      >
+        <div className="bg-card rounded-t-3xl shadow-2xl border-t border-border/50 overflow-hidden">
+          {/* Handle */}
+          <div className="flex justify-center pt-3 pb-2">
+            <div className="w-10 h-1 rounded-full bg-muted-foreground/20" />
+          </div>
+
+          {/* Content */}
+          <div className="px-6 pb-8 pt-2">
+            {/* Reservation info */}
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                <WashingMachineIcon className="w-7 h-7 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-display font-semibold text-lg text-foreground truncate">
+                  {reservation.name}
+                </h3>
+                <p className="text-muted-foreground text-sm">
+                  {formattedDate} · {reservation.timeSlot.replace("-", ":00-")}:00
+                </p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  onCancel();
+                  onClose();
+                }}
+                className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-destructive/10 text-destructive hover:bg-destructive/15 active:bg-destructive/20 active:scale-[0.98] transition-all duration-150"
+              >
+                <TrashIcon className="w-5 h-5" />
+                <span className="font-medium">Cancel Reservation</span>
+              </button>
+
+              <button
+                onClick={onClose}
+                className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-muted/50 text-muted-foreground hover:bg-muted active:bg-muted/70 active:scale-[0.98] transition-all duration-150"
+              >
+                <XIcon className="w-5 h-5" />
+                <span className="font-medium">Close</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Safe area padding for iOS */}
+          <div className="h-[env(safe-area-inset-bottom)]" />
+        </div>
+      </div>
+    </>
+  );
+}
 
 // Time slots (2-hour intervals)
 const TIME_SLOTS = [
@@ -146,6 +253,22 @@ export function WashingMachineSchedule() {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [keyboardHeight, setKeyboardHeight] = React.useState(0);
 
+  // Mobile action sheet state
+  const [actionSheetOpen, setActionSheetOpen] = React.useState(false);
+  const [selectedReservation, setSelectedReservation] =
+    React.useState<Reservation | null>(null);
+  const [isMobile, setIsMobile] = React.useState(false);
+
+  // Detect mobile device
+  React.useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 640 || "ontouchstart" in window);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
   // Track keyboard visibility using Visual Viewport API
   React.useEffect(() => {
     if (typeof window === "undefined" || !window.visualViewport) return;
@@ -226,6 +349,15 @@ export function WashingMachineSchedule() {
     setReservations((prev) =>
       prev.filter((r) => !(r.date === date && r.timeSlot === timeSlot))
     );
+  };
+
+  // Handle reservation click - show action sheet on mobile
+  const handleReservationClick = (reservation: Reservation, past: boolean) => {
+    if (past) return;
+    if (isMobile) {
+      setSelectedReservation(reservation);
+      setActionSheetOpen(true);
+    }
   };
 
   return (
@@ -377,7 +509,10 @@ export function WashingMachineSchedule() {
                         {reservation ? (
                           <div
                             className="group/res relative w-full"
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleReservationClick(reservation, past);
+                            }}
                           >
                             <div
                               className={cn(
@@ -386,22 +521,26 @@ export function WashingMachineSchedule() {
                                 "border border-primary/20",
                                 "shadow-sm",
                                 !past &&
-                                  "hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
+                                  "hover:shadow-md hover:scale-[1.02] active:scale-[0.98]",
+                                // Mobile: add subtle indicator that it's tappable
+                                !past && isMobile && "cursor-pointer"
                               )}
                             >
                               <span className="text-xs sm:text-sm font-medium text-primary truncate block">
                                 {reservation.name}
                               </span>
                             </div>
-                            {!past && (
+                            {/* Desktop: hover delete button */}
+                            {!past && !isMobile && (
                               <button
-                                onClick={() =>
-                                  handleCancelReservation(dateStr, timeSlot)
-                                }
-                                className="absolute -top-1 -right-1 sm:-top-1.5 sm:-right-1.5 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover/res:opacity-100 transition-all duration-200 flex items-center justify-center shadow-sm hover:scale-110"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCancelReservation(dateStr, timeSlot);
+                                }}
+                                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover/res:opacity-100 transition-all duration-200 flex items-center justify-center shadow-sm hover:scale-110"
                               >
                                 <svg
-                                  className="w-2.5 h-2.5 sm:w-3 sm:h-3"
+                                  className="w-3 h-3"
                                   fill="none"
                                   viewBox="0 0 24 24"
                                   stroke="currentColor"
@@ -419,10 +558,30 @@ export function WashingMachineSchedule() {
                         ) : past ? (
                           <div className="w-4 sm:w-6 h-0.5 rounded-full bg-border" />
                         ) : (
-                          <div className="flex flex-col items-center gap-1 opacity-0 group-hover:opacity-100 sm:transition-opacity sm:duration-200">
-                            <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 border-dashed border-primary/30 flex items-center justify-center">
+                          <div
+                            className={cn(
+                              "flex flex-col items-center gap-1 transition-opacity duration-200",
+                              // Mobile: always show subtle indicator
+                              isMobile
+                                ? "opacity-40 active:opacity-100"
+                                : "opacity-0 group-hover:opacity-100"
+                            )}
+                          >
+                            <div
+                              className={cn(
+                                "rounded-full border-2 border-dashed border-primary/30 flex items-center justify-center transition-all",
+                                isMobile
+                                  ? "w-4 h-4"
+                                  : "w-5 h-5 sm:w-6 sm:h-6"
+                              )}
+                            >
                               <svg
-                                className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary/50"
+                                className={cn(
+                                  "text-primary/50",
+                                  isMobile
+                                    ? "w-2 h-2"
+                                    : "w-2.5 h-2.5 sm:w-3 sm:h-3"
+                                )}
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -544,6 +703,21 @@ export function WashingMachineSchedule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Mobile Action Sheet for reservations */}
+      <MobileActionSheet
+        open={actionSheetOpen}
+        onClose={() => setActionSheetOpen(false)}
+        reservation={selectedReservation}
+        onCancel={() => {
+          if (selectedReservation) {
+            handleCancelReservation(
+              selectedReservation.date,
+              selectedReservation.timeSlot
+            );
+          }
+        }}
+      />
     </div>
   );
 }
