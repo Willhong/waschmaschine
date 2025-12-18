@@ -351,7 +351,12 @@ export function WashingMachineSchedule() {
     let reconnectTimeout: NodeJS.Timeout | null = null;
 
     const connect = () => {
-      eventSource = new EventSource("/api/reservations/stream");
+      const profile = getUserProfile();
+      const params = new URLSearchParams();
+      if (profile?.id) params.append("userId", profile.id);
+      if (profile?.name) params.append("userName", profile.name);
+      const queryString = params.toString();
+      eventSource = new EventSource(`/api/reservations/stream${queryString ? `?${queryString}` : ""}`);
 
       eventSource.onopen = () => {
         setIsConnected(true);

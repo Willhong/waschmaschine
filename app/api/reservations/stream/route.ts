@@ -19,8 +19,15 @@ export async function GET(request: NextRequest) {
   const clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const { ipAddress, userAgent } = getClientInfo(request);
 
+  // Get user info from query params
+  const { searchParams } = new URL(request.url);
+  const userId = searchParams.get("userId") || undefined;
+  const userName = searchParams.get("userName") || undefined;
+
   // Log SSE connection
   logAccess({
+    userId,
+    userName,
     action: "sse_connect",
     detail: `clientId: ${clientId}`,
     ipAddress,
@@ -55,6 +62,8 @@ export async function GET(request: NextRequest) {
         removeSSEClient(clientId);
         // Log SSE disconnection
         logAccess({
+          userId,
+          userName,
           action: "sse_disconnect",
           detail: `clientId: ${clientId}`,
           ipAddress,
