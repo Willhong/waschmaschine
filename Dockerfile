@@ -22,9 +22,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+# Create non-root user (Debian/Ubuntu)
+RUN groupadd --gid 1001 nodejs && \
+    useradd --uid 1001 --gid nodejs --system --create-home nextjs
 
 # Copy built application
 COPY --from=builder /app/public ./public
