@@ -8,6 +8,7 @@ import { logAccess } from "@/lib/access-logs";
 
 function getClientInfo(request: NextRequest) {
   const ipAddress =
+    request.headers.get("cf-connecting-ip") ||
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     request.headers.get("x-real-ip") ||
     "unknown";
