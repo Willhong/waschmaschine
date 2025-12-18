@@ -21,6 +21,9 @@ import {
   SparklesIcon,
   TrashIcon,
   XIcon,
+  Loader2Icon,
+  WifiIcon,
+  WifiOffIcon,
 } from "lucide-react";
 
 // Mobile action sheet component
@@ -142,9 +145,11 @@ const TIME_SLOTS = [
 type TimeSlot = (typeof TIME_SLOTS)[number];
 
 interface Reservation {
+  id?: string;
   date: string;
   timeSlot: TimeSlot;
   name: string;
+  createdAt?: string;
 }
 
 // Helper functions
@@ -253,11 +258,98 @@ export function WashingMachineSchedule() {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [keyboardHeight, setKeyboardHeight] = React.useState(0);
 
+  // Loading and connection states
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [isConnected, setIsConnected] = React.useState(false);
+
   // Mobile action sheet state
   const [actionSheetOpen, setActionSheetOpen] = React.useState(false);
   const [selectedReservation, setSelectedReservation] =
     React.useState<Reservation | null>(null);
   const [isMobile, setIsMobile] = React.useState(false);
+
+  // Fetch reservations from API
+  const fetchReservations = React.useCallback(async () => {
+    try {
+      const response = await fetch("/api/reservations");
+      if (response.ok) {
+        const data = await response.json();
+        setReservations(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch reservations:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Initial fetch
+  React.useEffect(() => {
+    fetchReservations();
+  }, [fetchReservations]);
+
+  // SSE connection for real-time updates
+  React.useEffect(() => {
+    let eventSource: EventSource | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+
+    const connect = () => {
+      eventSource = new EventSource("/api/reservations/stream");
+
+      eventSource.onopen = () => {
+        setIsConnected(true);
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === "connected") {
+            setIsConnected(true);
+          } else if (data.type === "add") {
+            setReservations((prev) => {
+              // Avoid duplicates
+              const exists = prev.some(
+                (r) =>
+                  r.date === data.reservation.date &&
+                  r.timeSlot === data.reservation.timeSlot
+              );
+              if (exists) return prev;
+              return [...prev, data.reservation];
+            });
+          } else if (data.type === "delete") {
+            setReservations((prev) =>
+              prev.filter(
+                (r) =>
+                  !(
+                    r.date === data.reservation.date &&
+                    r.timeSlot === data.reservation.timeSlot
+                  )
+              )
+            );
+          }
+        } catch (error) {
+          console.error("Failed to parse SSE message:", error);
+        }
+      };
+
+      eventSource.onerror = () => {
+        setIsConnected(false);
+        eventSource?.close();
+
+        // Reconnect after 3 seconds
+        reconnectTimeout = setTimeout(connect, 3000);
+      };
+    };
+
+    connect();
+
+    return () => {
+      eventSource?.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    };
+  }, []);
 
   // Detect mobile device
   React.useEffect(() => {
@@ -328,27 +420,68 @@ export function WashingMachineSchedule() {
     setDialogOpen(true);
   };
 
-  const handleReserve = () => {
+  const handleReserve = async () => {
     if (!selectedSlot || !userName.trim()) return;
 
-    setReservations((prev) => [
-      ...prev,
-      {
-        date: selectedSlot.date,
-        timeSlot: selectedSlot.timeSlot,
-        name: userName.trim(),
-      },
-    ]);
+    setIsSaving(true);
+    try {
+      const response = await fetch("/api/reservations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: selectedSlot.date,
+          timeSlot: selectedSlot.timeSlot,
+          name: userName.trim(),
+        }),
+      });
 
-    setDialogOpen(false);
-    setSelectedSlot(null);
-    setUserName("");
+      if (!response.ok) {
+        const error = await response.json();
+        console.error("Failed to save reservation:", error);
+        return;
+      }
+
+      // SSE will update the state, but also update optimistically
+      const newReservation = await response.json();
+      setReservations((prev) => {
+        const exists = prev.some(
+          (r) =>
+            r.date === newReservation.date &&
+            r.timeSlot === newReservation.timeSlot
+        );
+        if (exists) return prev;
+        return [...prev, newReservation];
+      });
+    } catch (error) {
+      console.error("Failed to save reservation:", error);
+    } finally {
+      setIsSaving(false);
+      setDialogOpen(false);
+      setSelectedSlot(null);
+      setUserName("");
+    }
   };
 
-  const handleCancelReservation = (date: string, timeSlot: TimeSlot) => {
+  const handleCancelReservation = async (date: string, timeSlot: TimeSlot) => {
+    // Optimistic update
     setReservations((prev) =>
       prev.filter((r) => !(r.date === date && r.timeSlot === timeSlot))
     );
+
+    try {
+      const response = await fetch(
+        `/api/reservations?date=${date}&timeSlot=${timeSlot}`,
+        { method: "DELETE" }
+      );
+
+      if (!response.ok) {
+        // Revert on failure
+        await fetchReservations();
+      }
+    } catch (error) {
+      console.error("Failed to delete reservation:", error);
+      await fetchReservations();
+    }
   };
 
   // Handle reservation click - show action sheet on mobile
@@ -373,13 +506,32 @@ export function WashingMachineSchedule() {
               <SparklesIcon className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary" />
             </div>
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="text-xl sm:text-2xl font-display font-semibold tracking-tight text-foreground">
               Washing Machine
             </h1>
             <p className="text-muted-foreground text-xs sm:text-sm">
               Tap a slot to book your laundry time
             </p>
+          </div>
+          {/* Connection status indicator */}
+          <div
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors",
+              isConnected
+                ? "bg-green-500/10 text-green-600"
+                : "bg-orange-500/10 text-orange-600"
+            )}
+            title={isConnected ? "Real-time sync active" : "Reconnecting..."}
+          >
+            {isConnected ? (
+              <WifiIcon className="w-3.5 h-3.5" />
+            ) : (
+              <WifiOffIcon className="w-3.5 h-3.5" />
+            )}
+            <span className="hidden sm:inline">
+              {isConnected ? "Live" : "Offline"}
+            </span>
           </div>
         </div>
       </div>
@@ -421,7 +573,16 @@ export function WashingMachineSchedule() {
       </div>
 
       {/* Schedule Grid */}
-      <div className="bg-card rounded-xl sm:rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+      <div className="bg-card rounded-xl sm:rounded-2xl shadow-sm border border-border/50 overflow-hidden relative">
+        {/* Loading overlay */}
+        {isLoading && (
+          <div className="absolute inset-0 bg-card/80 backdrop-blur-sm z-10 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2Icon className="w-8 h-8 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground">Loading reservations...</span>
+            </div>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <div className="min-w-[600px]">
             {/* Time slots header */}
@@ -695,10 +856,17 @@ export function WashingMachineSchedule() {
             </DialogClose>
             <Button
               onClick={handleReserve}
-              disabled={!userName.trim()}
+              disabled={!userName.trim() || isSaving}
               className="rounded-lg sm:rounded-xl px-6 w-full sm:w-auto"
             >
-              Book Slot
+              {isSaving ? (
+                <>
+                  <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+                  Booking...
+                </>
+              ) : (
+                "Book Slot"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
