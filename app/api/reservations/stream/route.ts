@@ -6,6 +6,14 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function getClientInfo(request: NextRequest) {
+  // Debug: 전체 헤더 확인
+  console.log("=== IP Headers Debug ===");
+  console.log("x-forwarded-for:", request.headers.get("x-forwarded-for"));
+  console.log("x-real-ip:", request.headers.get("x-real-ip"));
+  console.log("cf-connecting-ip:", request.headers.get("cf-connecting-ip"));
+  console.log("true-client-ip:", request.headers.get("true-client-ip"));
+  console.log("========================");
+
   const ipAddress =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     request.headers.get("x-real-ip") ||
