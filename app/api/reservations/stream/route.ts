@@ -1,10 +1,30 @@
+import { NextRequest } from "next/server";
 import { addSSEClient, removeSSEClient } from "@/lib/reservations";
+import { logAccess } from "@/lib/access-logs";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
+function getClientInfo(request: NextRequest) {
+  const ipAddress =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "unknown";
+  const userAgent = request.headers.get("user-agent") || undefined;
+  return { ipAddress, userAgent };
+}
+
+export async function GET(request: NextRequest) {
   const clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const { ipAddress, userAgent } = getClientInfo(request);
+
+  // Log SSE connection
+  logAccess({
+    action: "sse_connect",
+    detail: `clientId: ${clientId}`,
+    ipAddress,
+    userAgent,
+  });
 
   const stream = new ReadableStream({
     start(controller) {
@@ -32,6 +52,13 @@ export async function GET() {
       const cleanup = () => {
         clearInterval(heartbeatInterval);
         removeSSEClient(clientId);
+        // Log SSE disconnection
+        logAccess({
+          action: "sse_disconnect",
+          detail: `clientId: ${clientId}`,
+          ipAddress,
+          userAgent,
+        });
       };
 
       // Store cleanup function for later use

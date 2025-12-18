@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllProfiles, saveProfile } from "@/lib/profiles";
+import { logAccess } from "@/lib/access-logs";
+
+function getClientInfo(request: NextRequest) {
+  const ipAddress =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "unknown";
+  const userAgent = request.headers.get("user-agent") || undefined;
+  return { ipAddress, userAgent };
+}
 
 export async function GET() {
   try {
@@ -31,6 +41,17 @@ export async function POST(request: NextRequest) {
       name,
       color,
       updatedAt: new Date().toISOString(),
+    });
+
+    // Log profile update
+    const { ipAddress, userAgent } = getClientInfo(request);
+    logAccess({
+      userId: id,
+      userName: name,
+      action: "profile_update",
+      detail: `color: ${color}`,
+      ipAddress,
+      userAgent,
     });
 
     return NextResponse.json(profile, { status: 200 });

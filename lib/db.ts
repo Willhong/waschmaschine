@@ -33,3 +33,27 @@ db.run(`
     updatedAt TEXT NOT NULL
   )
 `);
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS access_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId TEXT,
+    userName TEXT,
+    action TEXT NOT NULL,
+    detail TEXT,
+    ipAddress TEXT,
+    userAgent TEXT,
+    accessedAt TEXT NOT NULL
+  )
+`);
+
+// Create index for faster queries
+db.run(`
+  CREATE INDEX IF NOT EXISTS idx_access_logs_accessedAt
+  ON access_logs(accessedAt DESC)
+`);
+
+db.run(`
+  CREATE INDEX IF NOT EXISTS idx_access_logs_userId
+  ON access_logs(userId)
+`);
