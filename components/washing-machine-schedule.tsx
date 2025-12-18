@@ -534,6 +534,7 @@ export function WashingMachineSchedule() {
           timeSlot: selectedSlot.timeSlot,
           userColor: currentProfile.color,
           userId: currentProfile.id,
+          userName: currentProfile.name,
         }),
       });
 
@@ -570,8 +571,13 @@ export function WashingMachineSchedule() {
     );
 
     try {
+      const currentProfile = getUserProfile();
+      const params = new URLSearchParams({ date, timeSlot });
+      if (currentProfile?.id) params.append("userId", currentProfile.id);
+      if (currentProfile?.name) params.append("userName", currentProfile.name);
+
       const response = await fetch(
-        `/api/reservations?date=${date}&timeSlot=${timeSlot}`,
+        `/api/reservations?${params.toString()}`,
         { method: "DELETE" }
       );
 

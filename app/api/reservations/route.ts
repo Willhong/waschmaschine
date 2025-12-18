@@ -32,7 +32,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { date, timeSlot, userColor, userId } = body;
+    const { date, timeSlot, userColor, userId, userName } = body;
 
     if (!date || !timeSlot || !userId) {
       return NextResponse.json(
@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
     const { ipAddress, userAgent } = getClientInfo(request);
     logAccess({
       userId,
+      userName,
       action: "reservation_create",
       detail: `${date} ${timeSlot}`,
       ipAddress,
@@ -75,6 +76,7 @@ export async function DELETE(request: NextRequest) {
     const date = searchParams.get("date");
     const timeSlot = searchParams.get("timeSlot");
     const userId = searchParams.get("userId");
+    const userName = searchParams.get("userName");
 
     if (!date || !timeSlot) {
       return NextResponse.json(
@@ -95,6 +97,7 @@ export async function DELETE(request: NextRequest) {
     const { ipAddress, userAgent } = getClientInfo(request);
     logAccess({
       userId: userId || undefined,
+      userName: userName || undefined,
       action: "reservation_delete",
       detail: `${date} ${timeSlot}`,
       ipAddress,
